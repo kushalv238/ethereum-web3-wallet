@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereum Wallet App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            color: rgb(82, 81, 81);
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+
+        .cells {
+            box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
+            width: 100%;
+            padding: 2rem;
+            border-radius: .4rem;
+        }
+
+        h1 {
+            width: 100%;
+        }
+
+        h2 {
+            margin-bottom: 0 !important;
+        }
+
+        p {
+            margin-top: 0 !important;
+            font-size: .9rem;
+        }
+
+        label {
+            display: block;
+            margin: 10px 0 5px;
+        }
+
+        input,
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-color: rgb(141, 141, 141);
+            border-radius: 10px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #qr-code {
+            display: grid;
+            place-items: center;
+        }
+
+        .result, #history, #qr-code {
+            background-color: #f1f1f1;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table,
+        th,
+        td {
+            border: 1px solid #ddd;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f4f4f4;
+        }
+
+        .loading {
+            font-size: 18px;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Ethereum Wallet App 👛🪙</h1>
+
+        <div class="cells">
+            <h2>Check Balance</h2>
+            <p>Retrieve balance from the Ethereum address.</p>
+            <button onclick="checkBalance()">Check Balance</button>
+            <div class="result" id="balanceResult"></div>
+        </div>
+        
+        <div class="cells">
+            <h2>Send Ether</h2>
+            <p>Send Ether to a specified address.</p>
+            <label for="sendToAddress">Recipient Address:</label>
+            <input type="text" id="sendToAddress" placeholder="Enter recipient address">
+            <label for="sendAmount">Amount (ETH):</label>
+            <input type="text" id="sendAmount" placeholder="Enter amount in Ether">
+            <button onclick="sendEther()">Send Ether</button>
+            <div class="result" id="sendResult"></div>
+        </div>
+        
+        <div class="cells">
+            <h2>Fetch transaction history</h2>
+            <p>Click the button below to fetch the transaction history for your Ethereum address.</p>
+            <button id="get-history" onclick="fetchTransactionHistory()">Fetch Transaction History</button>
+            <div id="history">
+                <!-- Fetched transaction history will be displayed here -->
+            </div>
+        </div>
+
+        <div class="cells">
+            <h2>Gas fee</h2>
+            <p>Estimate gas fee for a transaction.</p>
+            <button onclick="estimateGasFee()">Estimate gas fee</button>
+            <div class="result" id="gasFee"></div>
+        </div>
+
+        <div class="cells">
+            <h2>Ethereum Address QR Code</h2>
+            <p>Click the button below to generate and view the QR code for your Ethereum address.</p>
+            <button id="generate-btn" onclick="generateQR()">Generate QR Code</button>
+            <div id="qr-code">
+                <!-- QR Code image will be displayed here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:5000";
+
+        async function checkBalance() {
+            const resultDiv = document.getElementById("balanceResult");
+            resultDiv.textContent = "Checking balance...";
+            try {
+                const response = await fetch(`${API_URL}/balance`);
+                const data = await response.json();
+                if (response.ok) {
+                    resultDiv.textContent = `Balance: ${data.balance} ETH`;
+                } else {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                    resultDiv.style.color = "red";
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                resultDiv.style.color = "red";
+            }
+        }
+
+        async function estimateGasFee() {
+            const resultDiv = document.getElementById("gasFee");
+            resultDiv.textContent = "Estimating gas fee...";
+            try {
+                const response = await fetch(`${API_URL}/gas-fee`);
+                const data = await response.json();
+                if (response.ok) {
+                    resultDiv.textContent = `Gas Fee: ${data.gas_price} Gwei`;
+                } else {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                    resultDiv.style.color = "red";
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                resultDiv.style.color = "red";
+            }
+        }
+
+        async function generateQR() {
+            const qrCodeDiv = document.getElementById('qr-code');
+            qrCodeDiv.innerHTML = '<p>Loading...</p>';
+
+            try {
+                const response = await fetch(`${API_URL}/qr-code`);
+
+                if (response.ok) {
+                    const blob = await response.blob(); // Correct method for handling binary image data
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(blob);
+                    img.alt = 'Ethereum Address QR Code';
+                    img.style.maxWidth = '100%';
+                    qrCodeDiv.innerHTML = ''; // Clear previous content
+                    qrCodeDiv.appendChild(img);
+                } else {
+                    const errorData = await response.json();
+                    qrCodeDiv.textContent = `Error: ${errorData.error}`;
+                    qrCodeDiv.style.color = "red";
+                }
+            } catch (error) {
+                qrCodeDiv.textContent = `Error: ${error.message}`;
+                qrCodeDiv.style.color = "red";
+            }
+        }
+
+        async function sendEther() {
+            const to = document.getElementById("sendToAddress").value;
+            const amount = document.getElementById("sendAmount").value;
+            const resultDiv = document.getElementById("sendResult");
+
+            if (!to || !amount) {
+                resultDiv.textContent = "All fields required";
+                resultDiv.style.color = "red";
+                return;
+            }
+            resultDiv.textContent = "Sending transaction...";
+            try {
+                const response = await fetch(`${API_URL}/send`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ to, amount }),
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    resultDiv.textContent = `Transaction Hash: ${data.transaction_hash}`;
+                } else {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                    resultDiv.style.color = "red";
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                resultDiv.style.color = "red";
+            }
+        }
+
+        async function fetchTransactionHistory() {
+            const resultDiv = document.getElementById('history');
+            resultDiv.innerHTML = "Loading...";
+
+            try {
+                const response = await fetch(`${API_URL}/history`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayTransactions(data.transactions);
+                } else {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                    resultDiv.style.color = "red";
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                resultDiv.style.color = "red";
+            }
+        }
+
+        function displayTransactions(transactions) {
+            const resultDiv = document.getElementById('history');
+            if (transactions.length === 0) {
+                resultDiv.innerHTML = '<p>No transactions found for this address.</p>';
+                resultDiv.style.color = "red";
+                return;
+            }
+
+            let tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tx Hash</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Value (ETH)</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            transactions.forEach(tx => {
+                const date = new Date(tx.timeStamp * 1000).toLocaleString();
+                const valueInEth = (parseInt(tx.value) / 1e18).toFixed(4);
+                tableHtml += `
+                    <tr>
+                        <td><a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">${tx.hash.substring(0, 10)}...</a></td>
+                        <td>${tx.from}</td>
+                        <td>${tx.to}</td>
+                        <td>${valueInEth}</td>
+                        <td>${date}</td>
+                    </tr>
+                `;
+            });
+
+            tableHtml += '</tbody></table>';
+            resultDiv.innerHTML = tableHtml;
+        }
+    </script>
+</body>
+
+</html>
