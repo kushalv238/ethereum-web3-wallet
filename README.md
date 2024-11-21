@@ -40,7 +40,7 @@ curl http://127.0.0.1:5000/balance
 ### 2. Send Transaction
 Send Ether to another address.
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"to": "RECEIVER_ETH_ADDRESS", "amount": 0.01}' http://127.0.0.1:5000/send
+curl -X POST -H "Content-Type: application/json" -d "{\"to\": \"RECEIVER_ETH_ADDRESS\", \"amount\": 0.01}" http://127.0.0.1:5000/send
 ```
 replace `RECEIVER_ETH_ADDRESS` with receivers ethereum address
 
