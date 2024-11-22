@@ -239,6 +239,7 @@
                 const data = await response.json();
                 if (response.ok) {
                     resultDiv.textContent = `Transaction Hash: ${data.transaction_hash}`;
+                    resultDiv.style.color = "black";
                 } else {
                     resultDiv.textContent = `Error: ${data.error}`;
                     resultDiv.style.color = "red";

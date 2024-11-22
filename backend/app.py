@@ -42,26 +42,39 @@ def get_balance():
 def is_valid_eth_address(address):
     return re.match(r"^0x[a-fA-F0-9]{40}$", address)
 
+# TODO: fix transaction history``
 @app.route('/history', methods=['GET'])
 def get_transaction_history():
-    """Retrieve transaction history for an Ethereum address."""
     address = request.args.get('address', config.MY_ADDRESS)
-    
-    try:
-        # Get the latest block number
-        latest_block = web3.eth.block_number
-        
-        # Fetch logs from the blockchain
-        # This gets transactions involving the provided address
-        logs = []
-        for block_number in range(latest_block, latest_block - 5, -1):  # Fetch the last 5 blocks
-            block = web3.eth.get_block(block_number, full_transactions=True)
-            for tx in block['transactions']:
-                if tx['from'] == address or tx['to'] == address:
-                    logs.append(tx)
 
-        if logs:
-            return jsonify({'address': address, 'transactions': logs})
+    try:
+        # Ensure the address is checksummed
+        address = web3.to_checksum_address(address)
+        
+        # Get latest block number
+        latest_block = web3.eth.block_number
+        print(f"Latest block: {latest_block}, Address: {address}")
+        
+        # Fetch logs
+        logs = web3.eth.get_logs({
+            "from_block": latest_block - 1000,  # Fetch the last 1000 blocks
+            "to_block": "latest",
+            "topics": [],  # Empty topics filter to include all events
+            "address": address  # Filter for the specific address
+        })
+
+        transactions = []
+        for log in logs:
+            transaction = {
+                "blockNumber": log["blockNumber"],
+                "transactionHash": log["transactionHash"].hex(),
+                "address": log["address"],
+                "data": log["data"]
+            }
+            transactions.append(transaction)
+
+        if transactions:
+            return jsonify({'address': address, 'transactions': transactions})
         else:
             return jsonify({'error': 'No transactions found for this address'}), 400
 
@@ -105,6 +118,7 @@ def send_transaction():
 
         # Send the transaction
         tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        print(tx_hash)
         return jsonify({'transaction_hash': tx_hash.hex()})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
