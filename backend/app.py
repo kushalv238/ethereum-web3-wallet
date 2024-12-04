@@ -4,6 +4,7 @@ from flask_cors import CORS
 from web3 import Web3
 import qrcode
 import re
+import requests
 
 import config
 
@@ -17,89 +18,141 @@ app = Flask(__name__)
 # Enable CORS for all origins
 CORS(app)
 
-# Connect to Ethereum network using Infura
-web3 = Web3(Web3.HTTPProvider(config.INFURA_URL))
-
-# Check connection status
-if not web3.is_connected():
-    print("Failed to connect to Ethereum network.")
-else:
-    print("Connected to Ethereum network.")
-
-# Route to get the balance from the Ethereum address
-@app.route('/balance', methods=['GET'])
-def get_balance():
-    """Retrieve balance from the Ethereum address."""
-    address = config.MY_ADDRESS
-    try:
-        balance_wei = web3.eth.get_balance(address)
-        balance_eth = web3.from_wei(balance_wei, 'ether')
-        return jsonify({'address': address, 'balance': balance_eth})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+# Etherscan API Base URL
+ETHERSCAN_BASE_URL = "https://api-sepolia.etherscan.io/api"
 
 # Function to validate Ethereum address
 def is_valid_eth_address(address):
     return re.match(r"^0x[a-fA-F0-9]{40}$", address)
 
-# TODO: fix transaction history``
+@app.route('/balance', methods=['GET'])
+def get_balance():
+    """Retrieve balance from the Ethereum address using Etherscan."""
+    address = config.MY_ADDRESS
+    try:
+        url = ETHERSCAN_BASE_URL
+        params = {
+            'module': 'account',
+            'action': 'balance',
+            'address': address,
+            'tag': 'latest',
+            'apikey': config.ETHERSCAN_API_KEY
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
+        if data['status'] == "1":
+            balance_wei = int(data['result'])
+            balance_eth = balance_wei / 10**18  # Convert Wei to Ether
+            return jsonify({'address': address, 'balance': balance_eth})
+        else:
+            raise Exception(data['message'])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/tx', methods=['GET'])
+def get_transaction():
+    """Retrieve transaction details using Etherscan."""
+    tx_hash = request.args.get('tx_hash')
+    try:
+        url = ETHERSCAN_BASE_URL
+        params = {
+            'module': 'proxy',
+            'action': 'eth_getTransactionByHash',
+            'txhash': tx_hash,
+            'apikey': config.ETHERSCAN_API_KEY
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
+        if 'result' in data and data['result']:
+            tx = data['result']
+            if(tx["blockNumber"] is None):
+                raise Exception("Transaction is processing")
+            return jsonify({
+                "blockNumber": int(tx["blockNumber"], 16),
+                "from": tx["from"],
+                "to": tx["to"],
+                "value": int(tx["value"], 16) / 10**18,  # Convert Wei to Ether
+                "hash": tx["hash"]
+            })
+        else:
+            raise Exception("Transaction not found")
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/history', methods=['GET'])
 def get_transaction_history():
+    """Retrieve transaction history using Etherscan."""
     address = request.args.get('address', config.MY_ADDRESS)
 
     try:
         # Ensure the address is checksummed
-        address = web3.to_checksum_address(address)
+        if not is_valid_eth_address(address):
+            raise Exception("Invalid Ethereum address")
         
-        # Get latest block number
-        latest_block = web3.eth.block_number
-        print(f"Latest block: {latest_block}, Address: {address}")
+        url = ETHERSCAN_BASE_URL
+        params = {
+            'module': 'account',
+            'action': 'txlist',
+            'address': address,
+            'startblock': 0,
+            'endblock': 99999999,
+            'page': 1,
+            'offset': 100,
+            'sort': 'asc',
+            'apikey': config.ETHERSCAN_API_KEY,
+        }
+
+        response = requests.get(url, params=params)
+        data = response.json()
         
-        # Fetch logs
-        logs = web3.eth.get_logs({
-            "from_block": latest_block - 1000,  # Fetch the last 1000 blocks
-            "to_block": "latest",
-            "topics": [],  # Empty topics filter to include all events
-            "address": address  # Filter for the specific address
-        })
-
-        transactions = []
-        for log in logs:
-            transaction = {
-                "blockNumber": log["blockNumber"],
-                "transactionHash": log["transactionHash"].hex(),
-                "address": log["address"],
-                "data": log["data"]
-            }
-            transactions.append(transaction)
-
-        if transactions:
+        if data['status'] == "1":
+            transactions = data['result']
             return jsonify({'address': address, 'transactions': transactions})
         else:
-            return jsonify({'error': 'No transactions found for this address'}), 400
+            raise Exception(data['message'])
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-# Route to estimate gas fee
 @app.route('/gas-fee', methods=['GET'])
 def estimate_gas_fee():
-    """Estimate gas fee for a transaction."""
+    """Retrieve current gas price using Etherscan."""
     try:
-        gas_price = web3.eth.gas_price
-        return jsonify({'gas_price': web3.from_wei(gas_price, 'gwei')})
+        url = ETHERSCAN_BASE_URL
+        params = {
+            'module': 'proxy',
+            'action': 'eth_gasPrice',
+            'apikey': config.ETHERSCAN_API_KEY
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
+        
+        if 'result' in data:
+            gas_price_wei = int(data['result'], 16)
+            gas_price_gwei = gas_price_wei / 10**9  # Convert Wei to Gwei
+            return jsonify({'gas_price': gas_price_gwei})
+        else:
+            raise Exception("Unable to fetch gas price")
     except Exception as e:
         return jsonify({'error': str(e)}), 400
-    
-# Route to send Ether to a specified address
+
 @app.route('/send', methods=['POST'])
 def send_transaction():
     """Send Ether to a specified address."""
+    # Connect to Ethereum network using Infura
+    web3 = Web3(Web3.HTTPProvider(config.INFURA_URL))
+
+    # Check connection status
+    if not web3.is_connected():
+        print("Failed to connect to Ethereum network.")
+    else:
+        print("Connected to Ethereum network.")
+
     try:
         data = request.get_json()
         to_address = data['to']
         amount_ether = data['amount']
-
+        
         # Convert Ether to Wei
         amount_wei = web3.to_wei(amount_ether, 'ether')
 
@@ -109,7 +162,7 @@ def send_transaction():
             'to': to_address,
             'value': amount_wei,
             'gas': 21000,
-            'gasPrice': web3.to_wei('20', 'gwei'),
+            'gasPrice': web3.eth.gas_price,
             'nonce': web3.eth.get_transaction_count(config.MY_ADDRESS),
         }
 

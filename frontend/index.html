@@ -10,10 +10,11 @@
             font-family: Arial, sans-serif;
             padding: 20px;
             color: rgb(82, 81, 81);
+            box-sizing: border-box;
         }
 
         .container {
-            max-width: 600px;
+            max-width: 1000px;
             margin: 0 auto;
 
             display: flex;
@@ -71,37 +72,49 @@
             place-items: center;
         }
 
-        .result, #history, #qr-code {
+        .result, #qr-code {
             background-color: #f1f1f1;
             padding: 10px;
             border-radius: 5px;
         }
-
+        
+        #history{
+            overflow-x: scroll;
+            border-radius: 5px;
+            width: 100%;
+        }
+        
         table {
+            overflow: hidden;
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        table,
-        th,
-        td {
-            border: 1px solid #ddd;
         }
 
         th,
         td {
-            padding: 8px;
+            border: none;
+            padding: 20px 30px;
+            /* font-size: 14px; */
+            vertical-align: middle;
             text-align: left;
         }
 
         th {
-            background-color: #f4f4f4;
+            background-color: black;
+            color: white;
         }
 
         .loading {
             font-size: 18px;
             color: #555;
+        }
+
+        .success {
+            background-color: #BDE7BD;
+        }
+
+        .failure {
+            background-color: #FFB6B3;
         }
     </style>
 </head>
@@ -127,7 +140,7 @@
             <button onclick="sendEther()">Send Ether</button>
             <div class="result" id="sendResult"></div>
         </div>
-        
+
         <div class="cells">
             <h2>Fetch transaction history</h2>
             <p>Click the button below to fetch the transaction history for your Ethereum address.</p>
@@ -135,6 +148,15 @@
             <div id="history">
                 <!-- Fetched transaction history will be displayed here -->
             </div>
+        </div>
+
+        <div class="cells">
+            <h2>Get Transaction</h2>
+            <p>Get a particular transaction based on transaction hash</p>
+            <label for="tx_hash">Tx-hash:</label>
+            <input type="text" id="tx_hash" placeholder="Enter transaction hash">
+            <button onclick="tx_hash()">Check Transaction</button>
+            <div class="result" id="res_tx_hash"></div>
         </div>
 
         <div class="cells">
@@ -165,6 +187,40 @@
                 const data = await response.json();
                 if (response.ok) {
                     resultDiv.textContent = `Balance: ${data.balance} ETH`;
+                } else {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                    resultDiv.style.color = "red";
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                resultDiv.style.color = "red";
+            }
+        }
+
+        async function tx_hash() {
+            const resultDiv = document.getElementById("res_tx_hash");
+            resultDiv.textContent = "Getting tx info...";
+
+            const tx_hash = document.getElementById("tx_hash").value;
+
+            if (!tx_hash) {
+                resultDiv.textContent = "All fields required";
+                resultDiv.style.color = "red";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/tx?tx_hash=${tx_hash}`);
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML  = `
+                        Block Number: ${data.blockNumber}<br>
+                        From: ${data.from}<br>
+                        To: ${data.to}<br>
+                        Value: ${data.value} Eth
+                    `;
                 } else {
                     resultDiv.textContent = `Error: ${data.error}`;
                     resultDiv.style.color = "red";
@@ -259,7 +315,7 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    displayTransactions(data.transactions);
+                    displayTransactions(data);
                 } else {
                     resultDiv.textContent = `Error: ${data.error}`;
                     resultDiv.style.color = "red";
@@ -270,7 +326,9 @@
             }
         }
 
-        function displayTransactions(transactions) {
+        function displayTransactions(data) {
+            transactions = data.transactions
+
             const resultDiv = document.getElementById('history');
             if (transactions.length === 0) {
                 resultDiv.innerHTML = '<p>No transactions found for this address.</p>';
@@ -283,9 +341,12 @@
                     <thead>
                         <tr>
                             <th>Tx Hash</th>
+                            <th>Block Number</th>
                             <th>From</th>
                             <th>To</th>
                             <th>Value (ETH)</th>
+                            <th>Transaction Fee (ETH)</th>
+                            <th>Gas Price (Gwei)</th>
                             <th>Time</th>
                         </tr>
                     </thead>
@@ -294,13 +355,20 @@
 
             transactions.forEach(tx => {
                 const date = new Date(tx.timeStamp * 1000).toLocaleString();
-                const valueInEth = (parseInt(tx.value) / 1e18).toFixed(4);
+                const valueInEth = (parseInt(tx.value) / 1e18);
+                const transactionFee = (parseInt(tx.gasUsed * tx.gasPrice) / 1e18)
+                const gasPriceInGwei = (parseInt(tx.gasPrice) / 1e9);
+                const status = tx.txreceipt_status === "1";
+
                 tableHtml += `
-                    <tr>
+                    <tr class="${status ? 'success' : 'failure'}">
                         <td><a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">${tx.hash.substring(0, 10)}...</a></td>
+                        <td>${tx.blockNumber}</td>
                         <td>${tx.from}</td>
-                        <td>${tx.to}</td>
+                        <td>${tx.to || 'N/A'}</td>
                         <td>${valueInEth}</td>
+                        <td>${transactionFee}</td>
+                        <td>${gasPriceInGwei}</td>
                         <td>${date}</td>
                     </tr>
                 `;
