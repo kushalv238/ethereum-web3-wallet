@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 1. Start the Flask server:
 ```bash
-cd backend && python app.py
+python backend/app.py
 ```
 
 2. Navigate to the frontend directory and open the frontend file
